@@ -4,91 +4,94 @@ import sqlite3
 from datetime import datetime, date
 import plotly.express as px
 
-# 1. 데이터베이스 설정 - 테이블 이름을 v3로 변경하여 충돌 방지
-conn = sqlite3.connect('life_rpg_v3.db', check_same_thread=False)
+# 1. 데이터베이스 설정 (v4 새 테이블)
+conn = sqlite3.connect('life_rpg_v4.db', check_same_thread=False)
 c = conn.cursor()
-
-# 짐 8개가 딱 들어가는 8칸짜리 집 건설
-c.execute('''CREATE TABLE IF NOT EXISTS stats_v3 
-             (date TEXT PRIMARY KEY, 
-              sleep REAL, 
-              study REAL, 
-              steps INTEGER, 
-              saving INTEGER,
-              work_hours REAL, 
-              work_status TEXT, 
-              school_status TEXT)''')
+c.execute('''CREATE TABLE IF NOT EXISTS stats_v4 
+             (date TEXT PRIMARY KEY, sleep REAL, study REAL, steps INTEGER, 
+              saving INTEGER, work_hours REAL, work_status TEXT, school_status TEXT)''')
 conn.commit()
 
-st.set_page_config(page_title="Life RPG: Final", page_icon="🏆")
-st.title("🏆 인생 RPG: 전적 시스템 v3")
-st.write("새로운 데이터 구조로 재건축되었습니다. 이제 오류 없이 저장 가능합니다!")
+# --- 헬퍼 함수: 소수점 시간을 'X시간 Y분'으로 변환 ---
+def format_time(float_hours):
+    h = int(float_hours)
+    m = int(round((float_hours - h) * 60))
+    return f"{h}시간 {m}분"
 
-# 2. 날짜 및 개발자 모드 설정
+st.set_page_config(page_title="Life RPG: Time Focus", page_icon="⏰")
+st.title("⏰ 인생 RPG: 정밀 시간 전적 v4")
+
+# 2. 날짜 및 설정
 st.sidebar.header("⚙️ 설정")
 target_date = st.sidebar.date_input("날짜 선택", date.today())
 date_str = target_date.strftime('%Y-%m-%d')
-is_dev_mode = st.sidebar.checkbox("개발자 모드 (과거 수정 허용)", value=True)
+is_dev_mode = st.sidebar.checkbox("과거 수정 허용", value=True)
 
-# 3. 데이터 불러오기 로직
-c.execute("SELECT * FROM stats_v3 WHERE date=?", (date_str,))
+c.execute("SELECT * FROM stats_v4 WHERE date=?", (date_str,))
 existing = c.fetchone()
 
-# 기본값 설정 (짐 8개 세팅)
-defaults = {
-    "sleep": existing[1] if existing else 7.0,
-    "study": existing[2] if existing else 0.0,
-    "steps": existing[3] if existing else 5000,
-    "saving": existing[4] if existing else 50,
-    "work_hours": existing[5] if existing else 0.0,
-    "work_status": existing[6] if existing else "해당 없음",
-    "school_status": existing[7] if existing else "해당 없음"
-}
+# 기존 데이터가 있으면 시/분으로 분리
+def split_time(val):
+    h = int(val)
+    m = int(round((val - h) * 60))
+    return h, m
+
+d_sleep_h, d_sleep_m = split_time(existing[1]) if existing else (7, 0)
+d_study_h, d_study_m = split_time(existing[2]) if existing else (0, 0)
+d_work_h, d_work_m = split_time(existing[5]) if existing else (0, 0)
 
 can_edit = is_dev_mode or target_date == date.today()
 
-# 4. 입력 폼 (8개의 데이터 입력)
-with st.form("stat_form_v3"):
-    st.subheader(f"📅 {date_str} 전적 입력")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.info("💼 근태 관리")
-        work_hours = st.number_input("알바 시간", 0.0, 24.0, defaults["work_hours"], disabled=not can_edit)
+# 3. 입력 폼
+with st.form("stat_form_v4"):
+    st.subheader("💼 근태 및 출석")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.write("알바 시간")
+        wh = st.number_input("시", 0, 24, d_work_h, key="wh", disabled=not can_edit)
+        wm = st.number_input("분", 0, 59, d_work_m, key="wm", disabled=not can_edit)
+    with c2:
         work_status = st.selectbox("알바 상태", ["해당 없음", "정시 출근", "지각", "조퇴"], 
-                                   index=["해당 없음", "정시 출근", "지각", "조퇴"].index(defaults["work_status"]), disabled=not can_edit)
+                                   index=["해당 없음", "정시 출근", "지각", "조퇴"].index(existing[6] if existing else "해당 없음"), disabled=not can_edit)
         school_status = st.selectbox("학교 상태", ["해당 없음", "출석", "지각", "결석", "휴강"], 
-                                     index=["해당 없음", "출석", "지각", "결석", "휴강"].index(defaults["school_status"]), disabled=not can_edit)
+                                     index=["해당 없음", "출석", "지각", "결석", "휴강"].index(existing[7] if existing else "해당 없음"), disabled=not can_edit)
+
+    st.divider()
+    st.subheader("🧘 일상 스탯 (시/분 입력)")
+    col_s1, col_s2 = st.columns(2)
+    with col_s1:
+        st.write("수면 시간")
+        sh = st.number_input("시", 0, 24, d_sleep_h, key="sh", disabled=not can_edit)
+        sm = st.number_input("분", 0, 59, d_sleep_m, key="sm", disabled=not can_edit)
+    with col_s2:
+        st.write("자기계발 시간")
+        th = st.number_input("시", 0, 24, d_study_h, key="th", disabled=not can_edit)
+        tm = st.number_input("분", 0, 59, d_study_m, key="tm", disabled=not can_edit)
     
-    with col2:
-        st.info("🧘 일상 스탯")
-        sleep = st.slider("수면 시간", 0.0, 12.0, defaults["sleep"], disabled=not can_edit)
-        study = st.slider("자기계발 시간", 0.0, 15.0, defaults["study"], disabled=not can_edit)
-        steps = st.number_input("걸음 수", 0, 30000, defaults["steps"], disabled=not can_edit)
-        saving = st.slider("절약률 (%)", 0, 100, defaults["saving"], disabled=not can_edit)
+    steps = st.number_input("걸음 수", 0, 30000, existing[3] if existing else 5000, disabled=not can_edit)
+    saving = st.slider("절약률 (%)", 0, 100, existing[4] if existing else 50, disabled=not can_edit)
 
-    submitted = st.form_submit_button("전적 기록 저장 (Save Stats)", disabled=not can_edit)
+    submitted = st.form_submit_button("전적 저장하기")
 
-# 저장 로직 (8개 컬럼에 맞춰 INSERT)
 if submitted and can_edit:
-    c.execute('''INSERT OR REPLACE INTO stats_v3 
-                 (date, sleep, study, steps, saving, work_hours, work_status, school_status) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', 
-              (date_str, sleep, study, steps, saving, work_hours, work_status, school_status))
+    # 시/분을 소수점으로 변환하여 저장
+    final_work = wh + (wm / 60)
+    final_sleep = sh + (sm / 60)
+    final_study = th + (tm / 60)
+    
+    c.execute('''INSERT OR REPLACE INTO stats_v4 VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', 
+              (date_str, final_sleep, final_study, steps, saving, final_work, work_status, school_status))
     conn.commit()
-    st.success(f"✅ {date_str} 전적이 성공적으로 기록되었습니다!")
+    st.success(f"✅ {date_str} 전적이 저장되었습니다!")
     st.rerun()
 
-# 5. 전적 분석 시각화
+# 4. 분석 및 시각화
 st.divider()
-all_stats = pd.read_sql_query("SELECT * FROM stats_v3 ORDER BY date ASC", conn)
+all_stats = pd.read_sql_query("SELECT * FROM stats_v4 ORDER BY date ASC", conn)
 
 if not all_stats.empty:
-    # 랭킹 점수 산출 공식 (경영학적 가중치 반영)
-    def calc_rpg_score(row):
-        # 기본 스탯 점수
+    def calc_score(row):
         score = (row['sleep'] * 5) + (row['study'] * 15) + (row['steps'] / 200) + (row['saving'] * 0.3)
-        # 알바/학교 근태 보너스 및 페널티
         score += row['work_hours'] * 10
         if row['work_status'] == "정시 출근": score += 30
         elif row['work_status'] == "지각": score -= 50
@@ -96,17 +99,20 @@ if not all_stats.empty:
         elif row['school_status'] == "결석": score -= 100
         return score
 
-    all_stats['total_score'] = all_stats.apply(calc_rpg_score, axis=1)
+    all_stats['total_score'] = all_stats.apply(calc_score, axis=1)
     
-    # 그래프 출력
-    st.subheader("📊 나의 성장 곡선")
-    fig = px.line(all_stats, x='date', y='total_score', title='일별 종합 전적 점수', markers=True)
-    st.plotly_chart(fig)
+    # 표에 표시할 때 시간 포맷 변경
+    display_df = all_stats.copy()
+    display_df['수면시간'] = display_df['sleep'].apply(format_time)
+    display_df['자기계발'] = display_df['study'].apply(format_time)
+    display_df['알바시간'] = display_df['work_hours'].apply(format_time)
+
+    st.subheader("📈 나의 성장 곡선")
+    st.line_chart(all_stats.set_index('date')['total_score'])
     
-    # 로그 요약
-    st.subheader("📑 최근 로그")
-    st.dataframe(all_stats[['date', 'work_status', 'school_status', 'total_score']].tail(7))
+    st.subheader("📑 최근 전적 로그")
+    st.dataframe(display_df[['date', '수면시간', '자기계발', '알바시간', 'work_status', 'total_score']].tail(7))
 else:
-    st.info("데이터를 입력하면 여기에 전적 그래프가 나타납니다.")
+    st.info("전적을 입력하면 그래프가 나타납니다.")
 
 conn.close()
